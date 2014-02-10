@@ -10,11 +10,12 @@ helper = SerfHelper.new self
 # Create serf user/group
 group node["serf"]["group"] do
   action :create
-end
+end.run_action(:create) if node['serf']['compiletime']
 
 user node["serf"]["user"] do
   gid node["serf"]["group"]
-end
+  action :create
+end.run_action(:create) if node['serf']['compiletime']
 
 # Create serf directories
 
@@ -25,7 +26,7 @@ directory node["serf"]["base_directory"] do
   mode 00755
   recursive true
   action :create
-end
+end.run_action(:create) if node['serf']['compiletime']
 
 # /opt/serf/event_handlers
 directory helper.getEventHandlersDirectory do
@@ -34,7 +35,7 @@ directory helper.getEventHandlersDirectory do
   mode 00755
   recursive true
   action :create
-end
+end.run_action(:create) if node['serf']['compiletime']
 
 # /opt/serf/bin
 directory helper.getBinDirectory do
@@ -43,7 +44,7 @@ directory helper.getBinDirectory do
   mode 00755
   recursive true
   action :create
-end
+end.run_action(:create) if node['serf']['compiletime']
 
 # /opt/serf/config
 directory helper.getHomeConfigDirectory do
@@ -52,7 +53,7 @@ directory helper.getHomeConfigDirectory do
   mode 00755
   recursive true
   action :create
-end
+end.run_action(:create) if node['serf']['compiletime']
 
 # /opt/serf/log
 directory helper.getHomeLogDirectory do
@@ -61,36 +62,38 @@ directory helper.getHomeLogDirectory do
   mode 00755
   recursive true
   action :create
-end
+end.run_action(:create) if node['serf']['compiletime']
 
 # Create unix expected directories (/etc/serf, /var/log/serf, ...)
 
 # /var/log/serf
 link node["serf"]["log_directory"] do
   to helper.getHomeLogDirectory
-end
+end.run_action(:create) if node['serf']['compiletime']
 
 # /etc/serf
 link node["serf"]["conf_directory"] do
   to helper.getHomeConfigDirectory
-end
+end.run_action(:create) if node['serf']['compiletime']
 
 download_auth = Base64.encode64(
   "#{node["serf"]["download_user"]}:#{node["serf"]["download_pass"]}")
 
 # Download binary zip file
 remote_file helper.getZipFilePath do
-  action :create_if_missing
+  action :create
   source node["serf"]["binary_url"]
   group node["serf"]["group"]
   owner node["serf"]["user"]
   headers({"AUTHORIZATION" => "Basic #{download_auth}"})
   mode 00644
   backup false
-end
+end.run_action(:create) if node['serf']['compiletime']
 
 # Make sure unzip is available to us
-package "unzip"
+package "unzip" do
+  action :install
+end.run_action(:install) if node['serf']['compiletime']
 
 # Unzip serf binary
 execute "unzip serf binary" do
@@ -101,7 +104,7 @@ execute "unzip serf binary" do
   # -q = quiet, -o = overwrite existing files
   command "unzip -qo #{helper.getZipFilePath}"
 
-  notifies :restart, "service[serf]"
+  notifies :restart, "service[serf]" unless node['serf']['compiletime']
   only_if do
     currentVersion = helper.getSerfInstalledVersion
     if currentVersion != node["serf"]["version"]
@@ -109,19 +112,19 @@ execute "unzip serf binary" do
     end
     currentVersion != node["serf"]["version"]
   end
-end
+end.run_action(:run) if node['serf']['compiletime']
 
 # Ensure serf binary has correct permissions
 file helper.getSerfBinary do
   group node["serf"]["group"]
   owner node["serf"]["user"]
   mode 00755
-end
+end.run_action(:create) if node['serf']['compiletime']
 
 # Add serf to /usr/bin so it is on our path
 link "/usr/bin/serf" do
   to helper.getSerfBinary
-end
+end.run_action(:create) if node['serf']['compiletime']
 
 # Add entry to logrotate.d to log roll agents log files daily
 template "/etc/logrotate.d/serf_agent" do
@@ -131,7 +134,7 @@ template "/etc/logrotate.d/serf_agent" do
   mode 00755
   variables(:agent_log_file => helper.getAgentLog)
   backup false
-end
+end.run_action(:create) if node['serf']['compiletime']
 
 # Download and configure specified event handlers
 node["serf"]["event_handlers"].each do |event_handler|
@@ -156,7 +159,7 @@ node["serf"]["event_handlers"].each do |event_handler|
       owner node["serf"]["user"]
       mode 00755
       backup false
-    end
+    end.run_action(:create) if node['serf']['compiletime']
 
   else
     raise "Event handler [#{event_handler}] has no 'url'"
@@ -173,8 +176,8 @@ template helper.getAgentConfig do
   mode 00755
   variables( :agent_json => helper.getAgentJson)
   backup false
-  notifies :restart, "service[serf]"
-end
+  notifies :restart, "service[serf]" unless node['serf']['compiletime']
+end.run_action(:create) if node['serf']['compiletime']
 
 # Create init.d script
 template "/etc/init.d/serf" do
@@ -184,14 +187,24 @@ template "/etc/init.d/serf" do
   mode  00755
   variables(:helper => helper)
   backup false
-  notifies :restart, "service[serf]"
-end
+  notifies :restart, "service[serf]"  unless node['serf']['compiletime']
+end.run_action(:create) if node['serf']['compiletime']
 
 # Ensure everything is owned by serf user/group
-execute "chown -R #{node["serf"]["user"]}:#{node["serf"]["group"]} #{node["serf"]["base_directory"]}"
+execute "chown -R #{node["serf"]["user"]}:#{node["serf"]["group"]} #{node["serf"]["base_directory"]}" do
+  action :run
+end.run_action(:run) if node['serf']['compiletime']
 
 # Start agent service
-service "serf" do
+serf_service = service "serf" do
   supports :status => true, :restart => true, :reload => true
   action [ :enable, :start ]
 end
+
+if node['serf']['compiletime']
+  serf_service.run_action(:enable)
+  serf_service.run_action(:start)
+else
+  serf_service
+end
+

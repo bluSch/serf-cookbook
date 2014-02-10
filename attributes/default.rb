@@ -15,3 +15,5 @@ default["serf"]["arch"] = kernel["machine"] =~ /x86_64/ ? "amd64" : "386"
 default["serf"]["base_directory"] = "/opt/serf"
 default["serf"]["log_directory"] = "/var/log/serf"
 default["serf"]["conf_directory"] = "/etc/serf"
+
+default["serf"]['compiletime'] = false
