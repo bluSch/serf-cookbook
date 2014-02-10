@@ -19,55 +19,58 @@ SERF_AGENT_CONF_FILE=<%= @helper.getAgentConfig %>
 SERF_USER=<%= node["serf"]["user"] %>
 
 SLEEP_TIME=5
+SHORT_SLEEP_TIME=0.1
 CURRENT_WAIT=0
 TIMEOUT=30
 
 start() {
-	findPid
-	
-	if [ "" = "$FOUND_PID" ]; then
-      su -l $SERF_USER -c "$SERF_BINARY agent -config-file $SERF_AGENT_CONF_FILE >>$SERF_AGENT_LOG 2>&1 &"
-      
-      if [[ $? -ne 0 ]]; then
-        echo "Error starting $NAME"
-        exit 1
-      fi
-      
-      echo "$NAME successfully started"
-      
-    else
-      echo "$NAME is already running"
+  findPid
+
+  if [ "" = "$FOUND_PID" ]; then
+    su -l $SERF_USER -c "$SERF_BINARY agent -config-file $SERF_AGENT_CONF_FILE >>$SERF_AGENT_LOG 2>&1 &"
+
+    sleep $SHORT_SLEEP_TIME
+    findPid
+    if [ "" = "$FOUND_PID" ]; then
+      echo "Error starting $NAME"
+      exit 1
     fi
+
+    echo "$NAME successfully started"
+
+  else
+    echo "$NAME is already running"
+  fi
 }
 
 stop() {
-	findPid
-	if [ -z "$FOUND_PID" ]; then
-      echo "$NAME is not running, nothing to stop"
-    else
-    
-      while [[ -n $FOUND_PID ]]; 
-  	  do
-        echo "Attempting to shutdown $NAME..."
-        su -l $SERF_USER -c "kill -INT $FOUND_PID"
-      
-        if [[ $? -ne 0 ]]; then
-	      echo "Error stopping $NAME"
-	      exit 1
-	    fi
-	    
-	    sleep $SLEEP_TIME
-        CURRENT_WAIT=$(($CURRENT_WAIT+$SLEEP_TIME))
-        if [[ $CURRENT_WAIT -gt $TIMEOUT ]]; then
-          echo "Timed out waiting for $NAME to stop"
-          exit 1
-        fi
-        findPid
-      done
-      
-      echo "Stopped $NAME"
-      
-    fi
+  findPid
+  if [ -z "$FOUND_PID" ]; then
+    echo "$NAME is not running, nothing to stop"
+  else
+
+    while [[ -n $FOUND_PID ]];
+    do
+      echo "Attempting to shutdown $NAME..."
+      su -l $SERF_USER -c "kill -INT $FOUND_PID"
+
+      if [[ $? -ne 0 ]]; then
+        echo "Error stopping $NAME"
+        exit 1
+      fi
+
+      sleep $SLEEP_TIME
+      CURRENT_WAIT=$(($CURRENT_WAIT+$SLEEP_TIME))
+      if [[ $CURRENT_WAIT -gt $TIMEOUT ]]; then
+        echo "Timed out waiting for $NAME to stop"
+        exit 1
+      fi
+      findPid
+    done
+
+    echo "Stopped $NAME"
+
+  fi
 }
 
 status() {
@@ -75,7 +78,7 @@ status() {
   if [ -z "$FOUND_PID" ]; then
     echo "$NAME is not running" ; exit 1
   else
-    echo "$NAME is running : $FOUND_PID" 
+    echo "$NAME is running : $FOUND_PID"
   fi
 }
 
@@ -85,12 +88,12 @@ reload() {
     echo "$NAME is not running" ; exit 1
   else
     su -l $SERF_USER -c "kill -HUP $FOUND_PID"
-    echo "Reloaded $NAME" 
+    echo "Reloaded $NAME"
   fi
 }
 
 findPid() {
-	FOUND_PID=`pgrep -f $SERF_BINARY`
+  FOUND_PID=`pgrep -f $SERF_BINARY`
 }
 
 case "$1" in
