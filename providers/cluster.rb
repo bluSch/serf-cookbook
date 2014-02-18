@@ -11,7 +11,8 @@ action :join do
       rpc_address_option = "-rpc-addr=#{@new_resource.rpc_addr}"
       replay_option = @new_resource.replay ? "-replay" : ''
       Chef::Log.info("Joining serf cluster at #{@new_resource.address} via #{@new_resource.rpc_addr}.")
-      shell_out!("#{@new_resource.serf_binary} join #{rpc_address_option} #{replay_option} #{@new_resource.address}")
+      cmd = shell_out!("#{@new_resource.serf_binary} join #{rpc_address_option} #{replay_option} #{@new_resource.address}")
+      Chef::Log.info("Serf successfully started with #{cmd}.")
    else
       Chef::Log.error("Address required in order to join cluster.")
    end
